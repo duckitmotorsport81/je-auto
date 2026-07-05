@@ -1166,7 +1166,97 @@
   async function detectBackend(){
     if(ARTIFACT){ BACKEND = "artifact"; return; }
     if(await apiHealthy()){ BACKEND = "api"; return; }
+    if(location.protocol === "http:" || location.protocol === "https:"){ BACKEND = "github"; return; }
     BACKEND = "local";
+  }
+
+  /* ============================================================
+     GITHUB SELF-PUBLISH  (free static CMS)
+     The live site loads its data from data.json in the repo. The admin
+     commits an updated data.json via the GitHub API using the owner's
+     personal access token (stored only in this browser). Any laptop can
+     publish; all devices + customers then load the same data.json.
+  ============================================================ */
+  var GH_OWNER = "duckitmotorsport81";
+  var GH_REPO = "je-auto";
+  var GH_BRANCH = "main";
+  var GH_DATA_FILE = "data.json";
+  var pageDirty = false;
+
+  function ghToken(){ try{ return localStorage.getItem("je-auto-gh-token") || ""; }catch(e){ return ""; } }
+  function setGhToken(t){ try{ localStorage.setItem("je-auto-gh-token", t || ""); }catch(e){} }
+  function markDirty(){ pageDirty = true; updatePublishIndicator(); }
+  function updatePublishIndicator(){
+    var b = document.getElementById("publishBtn");
+    if(b) b.textContent = pageDirty ? "● Publish changes" : "Publish to Website";
+  }
+
+  function collectSiteData(){
+    return {
+      cars: state.cars,
+      photos: state.carPhotos,
+      settings: state.settings,
+      content: state.content,
+      heroImage: state.heroImage,
+      publishedAt: Date.now()
+    };
+  }
+
+  async function ghApi(path, method, bodyObj){
+    var r = await fetch("https://api.github.com" + path, {
+      method: method || "GET",
+      headers: {
+        "Authorization": "Bearer " + ghToken(),
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28"
+      },
+      body: bodyObj ? JSON.stringify(bodyObj) : undefined
+    });
+    if(!r.ok){ var t = await r.text(); throw new Error("GitHub " + r.status + ": " + t.slice(0, 180)); }
+    return await r.json();
+  }
+
+  async function publishToGitHub(){
+    if(!ghToken()) throw new Error("NO_TOKEN");
+    var json = JSON.stringify(collectSiteData());
+    var b64 = btoa(unescape(encodeURIComponent(json)));  // UTF-8 safe base64
+    var base = "/repos/" + GH_OWNER + "/" + GH_REPO;
+    var ref = await ghApi(base + "/git/ref/heads/" + GH_BRANCH);
+    var baseSha = ref.object.sha;
+    var baseCommit = await ghApi(base + "/git/commits/" + baseSha);
+    var blob = await ghApi(base + "/git/blobs", "POST", { content: b64, encoding: "base64" });
+    var tree = await ghApi(base + "/git/trees", "POST", {
+      base_tree: baseCommit.tree.sha,
+      tree: [{ path: GH_DATA_FILE, mode: "100644", type: "blob", sha: blob.sha }]
+    });
+    var commit = await ghApi(base + "/git/commits", "POST", {
+      message: "Update site content via admin", tree: tree.sha, parents: [baseSha]
+    });
+    await ghApi(base + "/git/refs/heads/" + GH_BRANCH, "PATCH", { sha: commit.sha });
+    pageDirty = false;
+    updatePublishIndicator();
+    return true;
+  }
+
+  async function loadPublishedData(){
+    try{
+      var r = await fetch(GH_DATA_FILE + "?cb=" + Date.now(), { cache: "no-store" });
+      if(r.ok){
+        var d = await r.json();
+        state.cars = (Array.isArray(d.cars) && d.cars.length) ? d.cars : DEFAULT_CARS.slice();
+        state.carPhotos = d.photos || {};
+        state.settings = Object.assign({}, DEFAULT_SETTINGS, d.settings || {});
+        state.content = Object.assign({}, DEFAULT_CONTENT, BAKED_CONTENT, d.content || {});
+        state.heroImage = (typeof d.heroImage === "string") ? d.heroImage : (BAKED_HERO || "");
+        return;
+      }
+    }catch(e){}
+    // No data.json yet — fall back to whatever was baked into the page
+    state.cars = DEFAULT_CARS.slice();
+    state.carPhotos = (typeof DEFAULT_PHOTOS !== "undefined") ? Object.assign({}, DEFAULT_PHOTOS) : {};
+    state.settings = Object.assign({}, DEFAULT_SETTINGS);
+    state.content = Object.assign({}, DEFAULT_CONTENT, BAKED_CONTENT);
+    state.heroImage = BAKED_HERO || "";
   }
   async function loadFromApi(){
     var data = await apiGet("/api/state");
@@ -1202,6 +1292,7 @@
   }
   async function persistCars(cars){
     state.cars = cars; // Always update memory first
+    if(BACKEND === "github"){ markDirty(); return true; }
     if(BACKEND === "api"){ return await apiSend("PUT", "/api/cars", {cars:cars}); }
     var data = JSON.stringify(cars);
     // Try both storage modes so loadCars always finds it regardless of which one works
@@ -1252,6 +1343,7 @@
   }
   async function persistSettings(settings){
     state.settings = settings;
+    if(BACKEND === "github"){ markDirty(); return true; }
     if(BACKEND === "api"){ return await apiSend("PUT", "/api/settings", settings); }
     try{
       await store.set("je-auto-settings", JSON.stringify(settings), false);
@@ -1271,6 +1363,7 @@
   }
   async function persistContent(content){
     state.content = Object.assign({}, DEFAULT_CONTENT, content);
+    if(BACKEND === "github"){ markDirty(); return true; }
     if(BACKEND === "api"){ return await apiSend("PUT", "/api/content", state.content); }
     try{
       await store.set("je-auto-content", JSON.stringify(state.content), false);
@@ -1289,6 +1382,7 @@
   }
   async function persistHeroImage(img){
     state.heroImage = img || "";
+    if(BACKEND === "github"){ markDirty(); return true; }
     if(BACKEND === "api"){ return await apiSend("PUT", "/api/hero-image", { image: state.heroImage }); }
     try{
       await store.set("je-auto-hero", JSON.stringify(state.heroImage), false);
@@ -1313,6 +1407,7 @@
   }
   async function savePhotosForCar(carId, photos){
     state.carPhotos[carId] = photos; // memory always wins
+    if(BACKEND === "github"){ markDirty(); return true; }
     if(BACKEND === "api"){ return await apiSend("PUT", "/api/cars/" + carId + "/photos", {photos:photos}); }
     for(var i = 0; i < photos.length; i++){
       try{ await store.set("p" + carId + "x" + i, JSON.stringify(photos[i])); }catch(e){}
@@ -1323,6 +1418,7 @@
     return true;
   }
   async function deletePhotosForCar(carId){
+    if(BACKEND === "github"){ delete state.carPhotos[carId]; markDirty(); return true; }
     if(BACKEND === "api"){
       delete state.carPhotos[carId];
       return await apiSend("DELETE", "/api/cars/" + carId + "/photos");
@@ -1684,6 +1780,9 @@
     renderPublicCars();
     document.getElementById("inventory").scrollIntoView({behavior:"smooth"});
   }
+  window.addEventListener("beforeunload", function(e){
+    if(pageDirty){ e.preventDefault(); e.returnValue = ""; }
+  });
   window.addEventListener("hashchange", checkHashAdmin);
   window.addEventListener("keydown", function(e){
     if(e.ctrlKey && e.altKey && (e.key === "j" || e.key === "J")){
@@ -1816,21 +1915,39 @@
         '<span class="logo-mark" style="font-size:1.2rem;">JE <span style="color:var(--gold);">AUTO</span> <span style="color:var(--muted); font-size:.7rem; font-family:\'JetBrains Mono\',monospace; letter-spacing:.08em;">STAFF PORTAL</span></span>' +
         '<div style="display:flex; align-items:center; gap:18px;">' +
           '<span class="who">Signed in as <b>' + escapeHtml(state.currentUser.username) + '</b> (' + state.currentUser.role + ')</span>' +
+          (BACKEND === "github" ? '<button id="publishBtn" class="btn btn-gold btn-sm">Publish to Website</button>' : '') +
           '<a href="#" id="backToSite2" class="btn btn-outline btn-sm">View Website</a>' +
-          '<button id="logoutBtn" class="btn btn-gold btn-sm">Log Out</button>' +
+          '<button id="logoutBtn" class="btn btn-outline btn-sm">Log Out</button>' +
         '</div>' +
       '</div>' +
       '<div class="admin-tabs" id="adminTabs">' +
         '<button class="tab ' + (state.activeTab === "inventory" ? "active" : "") + '" data-tab="inventory">Inventory</button>' +
         '<button class="tab ' + (state.activeTab === "settings" ? "active" : "") + '" data-tab="settings">Contact Info</button>' +
         '<button class="tab ' + (state.activeTab === "content" ? "active" : "") + '" data-tab="content">Page Content</button>' +
+        (BACKEND === "github" ? '<button class="tab ' + (state.activeTab === "publish" ? "active" : "") + '" data-tab="publish">Publish</button>' : '') +
         staffTabHtml +
       '</div>' +
       '<div class="admin-content" id="adminContent"></div>';
   }
+  async function handlePublishClick(){
+    if(!ghToken()){ state.activeTab = "publish"; renderAdmin(); return; }
+    var btn = document.getElementById("publishBtn");
+    if(btn){ btn.disabled = true; btn.textContent = "Publishing…"; }
+    try{
+      await publishToGitHub();
+      toast("Published! Your website updates in about 1–2 minutes.");
+    }catch(err){
+      if(err.message === "NO_TOKEN"){ state.activeTab = "publish"; renderAdmin(); return; }
+      toast("Publish failed: " + err.message, false);
+    }finally{
+      if(btn){ btn.disabled = false; updatePublishIndicator(); }
+    }
+  }
   function bindAdminShellEvents(){
     document.getElementById("logoutBtn").addEventListener("click", handleLogout);
     document.getElementById("backToSite2").addEventListener("click", function(e){ e.preventDefault(); exitAdmin(); });
+    var pubBtn = document.getElementById("publishBtn");
+    if(pubBtn){ pubBtn.addEventListener("click", handlePublishClick); updatePublishIndicator(); }
     document.querySelectorAll("#adminTabs .tab").forEach(function(t){
       t.addEventListener("click", function(){
         state.activeTab = t.getAttribute("data-tab");
@@ -1850,6 +1967,11 @@
     if(state.activeTab === "content"){
       c.innerHTML = pageContentTabHTML();
       bindPageContentEvents();
+      return;
+    }
+    if(state.activeTab === "publish"){
+      c.innerHTML = publishTabHTML();
+      bindPublishTabEvents();
       return;
     }
     if(state.activeTab === "staff" && state.currentUser.role === "owner"){
@@ -2201,6 +2323,52 @@
     } else {
       toast("Couldn't delete — please try again.", false);
     }
+  }
+
+  /* ---------- Publish tab (free GitHub self-publish) ---------- */
+  function publishTabHTML(){
+    var connected = !!ghToken();
+    var dirtyLine = pageDirty
+      ? '<p style="color:var(--gold-bright); font-weight:600; margin-bottom:14px;">● You have unpublished changes.</p>'
+      : '<p class="hint" style="margin-bottom:14px;">No unpublished changes right now.</p>';
+    var body = connected
+      ? '<div style="color:var(--gold-bright); font-weight:600; margin-bottom:14px;">✓ This device is connected to GitHub.</div>' +
+        dirtyLine +
+        '<div style="display:flex; gap:10px; flex-wrap:wrap;">' +
+          '<button type="button" class="btn btn-gold" id="publishNowBtn">Publish to Website Now</button>' +
+          '<button type="button" class="btn btn-outline" id="disconnectGhBtn">Disconnect this device</button>' +
+        '</div>'
+      : '<p style="margin-bottom:14px; color:var(--muted); font-size:.9rem;">To publish from this laptop, connect it once with your GitHub key.</p>' +
+        '<div class="field-group"><label>GitHub key (personal access token)</label>' +
+          '<input type="password" id="ghTokenInput" placeholder="github_pat_… or ghp_…" autocomplete="off"></div>' +
+        '<button type="button" class="btn btn-gold" id="connectGhBtn">Connect this device</button>' +
+        '<p class="hint" style="margin-top:12px;">Don\'t have a key yet? Ask for the quick one-time steps to create a free GitHub key for your site.</p>';
+    return '' +
+      '<h2 style="margin-bottom:6px; font-size:1.4rem;">Publish to Website</h2>' +
+      '<p class="owner-only-note">Make your edits in the other tabs, then publish here to push them live to your website (updates in ~1–2 minutes). Works from any laptop once connected.</p>' +
+      '<div class="car-form-card" style="max-width:560px;">' + body + '</div>';
+  }
+  function bindPublishTabEvents(){
+    var connectBtn = document.getElementById("connectGhBtn");
+    if(connectBtn) connectBtn.addEventListener("click", function(){
+      var t = (document.getElementById("ghTokenInput").value || "").trim();
+      if(!t){ toast("Please paste your GitHub key.", false); return; }
+      setGhToken(t);
+      toast("Connected. You can now publish from this device.");
+      renderAdminTabContent();
+    });
+    var pubNow = document.getElementById("publishNowBtn");
+    if(pubNow) pubNow.addEventListener("click", async function(){
+      pubNow.disabled = true; pubNow.textContent = "Publishing…";
+      try{ await publishToGitHub(); toast("Published! Your website updates in about 1–2 minutes."); renderAdminTabContent(); }
+      catch(err){ toast("Publish failed: " + err.message, false); }
+      finally{ if(document.getElementById("publishNowBtn")){ pubNow.disabled = false; pubNow.textContent = "Publish to Website Now"; } }
+    });
+    var disc = document.getElementById("disconnectGhBtn");
+    if(disc) disc.addEventListener("click", function(){
+      if(!confirm("Disconnect GitHub from this device? You'll need to paste your key again to publish from here.")) return;
+      setGhToken(""); toast("Disconnected from this device."); renderAdminTabContent();
+    });
   }
 
   /* ---------- Page Content tab ---------- */
@@ -2558,6 +2726,8 @@
     await detectBackend();
     if(BACKEND === "api"){
       await loadFromApi();
+    } else if(BACKEND === "github"){
+      await loadPublishedData();
     } else {
       await loadCars();
       await loadAllCarPhotosAndMigrate();
