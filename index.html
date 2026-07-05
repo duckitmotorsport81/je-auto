@@ -152,6 +152,7 @@
   .hero-panel .corner.bl{bottom:10px; left:10px; border-right:none; border-top:none;}
   .hero-panel .corner.br{bottom:10px; right:10px; border-left:none; border-top:none;}
   .hero-panel svg{color:var(--gold); width:100%; height:auto; opacity:.95;}
+  .hero-media img{width:100%; height:auto; max-height:340px; object-fit:cover; border-radius:var(--r-sm); display:block;}
   .hero-chips{display:flex; gap:10px; flex-wrap:wrap; margin-top:18px;}
   .chip{
     font-family:'JetBrains Mono',monospace; font-size:.68rem; letter-spacing:.05em; text-transform:uppercase;
@@ -532,13 +533,13 @@
     <div class="hero-visual">
       <div class="hero-panel">
         <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
-        <svg viewBox="0 0 200 100" xmlns="http://www.w3.org/2000/svg">
+        <div class="hero-media" id="heroMedia"><svg viewBox="0 0 200 100" xmlns="http://www.w3.org/2000/svg">
           <path d="M14 70 L26 44 Q36 28 58 28 L84 28 Q95 28 100 37 L122 37 Q142 37 154 50 L178 55 Q190 57 190 67 L190 70" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
           <path d="M6 70 H194" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
           <circle cx="56" cy="73" r="13" stroke="currentColor" stroke-width="3" fill="#0a0a0b"/>
           <circle cx="152" cy="73" r="13" stroke="currentColor" stroke-width="3" fill="#0a0a0b"/>
           <path d="M66 37 L66 60 M101 37 L101 60" stroke="currentColor" stroke-width="2"/>
-        </svg>
+        </svg></div>
         <div class="hero-chips">
           <span class="chip">Fast Loan Approval</span>
           <span class="chip">Trade-In Accepted</span>
@@ -1000,6 +1001,7 @@
   var DEFAULT_CONTENT = {};
   CONTENT_SCHEMA.forEach(function(s){ s.fields.forEach(function(f){ DEFAULT_CONTENT[f.key] = f.def; }); });
   var BAKED_CONTENT = {}; // static builds replace this with the saved content
+  var BAKED_HERO = ""; // static builds replace this with the saved hero photo (base64)
 
   /* ============================================================
      STATE
@@ -1009,6 +1011,7 @@
     staff: [],
     settings: Object.assign({}, DEFAULT_SETTINGS), // business contact info, editable in the staff portal
     content: Object.assign({}, DEFAULT_CONTENT),   // editable landing-page text, section by section
+    heroImage: "",                                 // optional uploaded hero photo (base64); empty = default graphic
     carPhotos: {}, // carId -> array of base64 photo strings, each car has its own 5MB budget
     adminMode: false,
     currentUser: null,
@@ -1172,12 +1175,14 @@
       state.carPhotos = data.photos || {};
       state.settings = Object.assign({}, DEFAULT_SETTINGS, data.settings || {});
       state.content = Object.assign({}, DEFAULT_CONTENT, BAKED_CONTENT, data.content || {});
+      state.heroImage = data.heroImage || BAKED_HERO || "";
     } else {
       // Server hiccup — show something rather than nothing
       state.cars = DEFAULT_CARS.slice();
       state.carPhotos = {};
       state.settings = Object.assign({}, DEFAULT_SETTINGS);
       state.content = Object.assign({}, DEFAULT_CONTENT, BAKED_CONTENT);
+      state.heroImage = BAKED_HERO || "";
     }
   }
 
@@ -1270,6 +1275,24 @@
     try{
       await store.set("je-auto-content", JSON.stringify(state.content), false);
       await store.set("je-auto-content", JSON.stringify(state.content), true);
+    }catch(e){}
+    return true;
+  }
+
+  async function loadHeroImage(){
+    try{
+      var r = await store.get("je-auto-hero", true);
+      if(!r || !r.value) r = await store.get("je-auto-hero", false);
+      if(r && r.value){ state.heroImage = JSON.parse(r.value); return; }
+    }catch(e){}
+    state.heroImage = BAKED_HERO || "";
+  }
+  async function persistHeroImage(img){
+    state.heroImage = img || "";
+    if(BACKEND === "api"){ return await apiSend("PUT", "/api/hero-image", { image: state.heroImage }); }
+    try{
+      await store.set("je-auto-hero", JSON.stringify(state.heroImage), false);
+      await store.set("je-auto-hero", JSON.stringify(state.heroImage), true);
     }catch(e){}
     return true;
   }
@@ -1470,6 +1493,18 @@
         else el.textContent = val;
       });
     });
+  }
+
+  var heroDefaultHTML = null;
+  function applyHeroImage(){
+    var media = document.getElementById("heroMedia");
+    if(!media) return;
+    if(heroDefaultHTML === null) heroDefaultHTML = media.innerHTML; // capture original graphic once
+    if(state.heroImage){
+      media.innerHTML = '<img src="' + state.heroImage + '" alt="' + escapeHtml(bizName()) + '">';
+    } else {
+      media.innerHTML = heroDefaultHTML;
+    }
   }
 
   function applySettings(){
@@ -2187,13 +2222,22 @@
     var localNote = (BACKEND !== "api")
       ? '<div style="background:rgba(201,162,39,.1); border:1px solid var(--line-strong); border-radius:var(--r-md); padding:12px 16px; margin-bottom:16px; font-size:.85rem; color:var(--gold-bright);">⚠ You are editing a preview on this device only. Your changes are saved here, but to make them live for customers on your website, ask for them to be published.</div>'
       : '';
+    var heroCard = '' +
+      '<div class="car-form-card" style="margin-bottom:18px;">' +
+        '<h3 style="margin-bottom:6px; font-size:1.1rem;">Hero Image (top-right photo)</h3>' +
+        '<p class="hint" style="margin-bottom:12px;">Upload a photo to replace the outline-car graphic in the hero banner. Wide/landscape images look best. Leave empty to keep the default graphic.</p>' +
+        '<div class="photo-drop" id="heroDrop">Click to choose a photo, or drag &amp; drop here</div>' +
+        '<input type="file" id="heroInput" accept="image/*" hidden>' +
+        '<div id="heroPreview" style="margin-top:12px;"></div>' +
+      '</div>';
     return '' +
       '<div class="admin-toolbar">' +
         '<div><h2 style="margin-bottom:4px; font-size:1.4rem;">Page Content</h2>' +
-        '<p class="hint">Edit any text on your website, section by section. Save here, then publish to make it live.</p></div>' +
+        '<p class="hint">Edit any text or the hero image on your website. Save here, then publish to make it live.</p></div>' +
         '<button type="button" class="btn btn-gold" id="savePageContentTop">Save All Changes</button>' +
       '</div>' +
       localNote +
+      heroCard +
       '<form id="pageContentForm">' + groups +
         '<div style="display:flex; gap:10px; position:sticky; bottom:0; background:var(--black); padding:14px 0; margin-top:4px; border-top:1px solid var(--line-strong);">' +
           '<button type="submit" class="btn btn-gold">Save All Changes</button>' +
@@ -2201,9 +2245,46 @@
         '</div>' +
       '</form>';
   }
+  function renderHeroPreview(){
+    var wrap = document.getElementById("heroPreview");
+    if(!wrap) return;
+    if(state.heroImage){
+      wrap.innerHTML = '<img src="' + state.heroImage + '" style="max-width:300px; width:100%; border-radius:var(--r-sm); border:1px solid var(--line-strong); display:block; margin-bottom:10px;">' +
+        '<button type="button" class="btn btn-outline btn-sm" id="heroRemoveBtn">Remove photo (use default graphic)</button>';
+      var rm = document.getElementById("heroRemoveBtn");
+      if(rm) rm.addEventListener("click", async function(){
+        var ok = await persistHeroImage("");
+        if(ok){ applyHeroImage(); renderHeroPreview(); toast("Reverted to the default graphic."); }
+        else toast("Couldn't update — please try again.", false);
+      });
+    } else {
+      wrap.innerHTML = '<span class="hint">No photo set — showing the default car graphic.</span>';
+    }
+  }
+  async function handleHeroFile(file){
+    if(!file) return;
+    try{
+      var dataUrl = await resizeImage(file, 1000, 0.7);
+      var ok = await persistHeroImage(dataUrl);
+      if(ok){ applyHeroImage(); renderHeroPreview(); toast("Hero image updated."); }
+      else toast("Couldn't save hero image.", false);
+    }catch(err){ toast(err.message || "Could not process that image.", false); }
+  }
+
   function bindPageContentEvents(){
     var form = document.getElementById("pageContentForm");
     var topBtn = document.getElementById("savePageContentTop");
+
+    var heroDrop = document.getElementById("heroDrop");
+    var heroInput = document.getElementById("heroInput");
+    if(heroDrop && heroInput){
+      heroDrop.addEventListener("click", function(){ heroInput.click(); });
+      heroDrop.addEventListener("dragover", function(e){ e.preventDefault(); heroDrop.classList.add("dragover"); });
+      heroDrop.addEventListener("dragleave", function(){ heroDrop.classList.remove("dragover"); });
+      heroDrop.addEventListener("drop", function(e){ e.preventDefault(); heroDrop.classList.remove("dragover"); handleHeroFile(e.dataTransfer.files[0]); });
+      heroInput.addEventListener("change", function(){ handleHeroFile(heroInput.files[0]); });
+      renderHeroPreview();
+    }
     if(topBtn && form) topBtn.addEventListener("click", function(){
       if(form.requestSubmit) form.requestSubmit();
       else form.dispatchEvent(new Event("submit", {cancelable:true, bubbles:true}));
@@ -2483,12 +2564,14 @@
       await loadStaff();
       await loadSettings();
       await loadContent();
+      await loadHeroImage();
     }
     if(typeof DEFAULT_PHOTOS === "object"){ for(var _id in DEFAULT_PHOTOS){ if(!(state.carPhotos[_id] && state.carPhotos[_id].length)) state.carPhotos[_id] = DEFAULT_PHOTOS[_id]; } }
     buildBrandOptions();
     renderPublicCars();
     applySettings();
     applyContent();
+    applyHeroImage();
     initFilters();
     initCalculator();
     initNav();
