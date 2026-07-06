@@ -1213,6 +1213,7 @@
   async function ghApi(path, method, bodyObj){
     var r = await fetch("https://api.github.com" + path, {
       method: method || "GET",
+      cache: "no-store",  // always read the freshest ref/commit — avoids stale "not a fast forward"
       headers: {
         "Authorization": "Bearer " + ghToken(),
         "Accept": "application/vnd.github+json",
@@ -1229,21 +1230,33 @@
     var json = JSON.stringify(collectSiteData());
     var b64 = btoa(unescape(encodeURIComponent(json)));  // UTF-8 safe base64
     var base = "/repos/" + GH_OWNER + "/" + GH_REPO;
-    var ref = await ghApi(base + "/git/ref/heads/" + GH_BRANCH);
-    var baseSha = ref.object.sha;
-    var baseCommit = await ghApi(base + "/git/commits/" + baseSha);
     var blob = await ghApi(base + "/git/blobs", "POST", { content: b64, encoding: "base64" });
-    var tree = await ghApi(base + "/git/trees", "POST", {
-      base_tree: baseCommit.tree.sha,
-      tree: [{ path: GH_DATA_FILE, mode: "100644", type: "blob", sha: blob.sha }]
-    });
-    var commit = await ghApi(base + "/git/commits", "POST", {
-      message: "Update site content via admin", tree: tree.sha, parents: [baseSha]
-    });
-    await ghApi(base + "/git/refs/heads/" + GH_BRANCH, "PATCH", { sha: commit.sha });
-    pageDirty = false;
-    updatePublishIndicator();
-    return true;
+    var lastErr;
+    for(var attempt = 0; attempt < 4; attempt++){
+      try{
+        var ref = await ghApi(base + "/git/ref/heads/" + GH_BRANCH);
+        var baseSha = ref.object.sha;
+        var baseCommit = await ghApi(base + "/git/commits/" + baseSha);
+        var tree = await ghApi(base + "/git/trees", "POST", {
+          base_tree: baseCommit.tree.sha,
+          tree: [{ path: GH_DATA_FILE, mode: "100644", type: "blob", sha: blob.sha }]
+        });
+        var commit = await ghApi(base + "/git/commits", "POST", {
+          message: "Update site content via admin", tree: tree.sha, parents: [baseSha]
+        });
+        await ghApi(base + "/git/refs/heads/" + GH_BRANCH, "PATCH", { sha: commit.sha });
+        pageDirty = false;
+        updatePublishIndicator();
+        return true;
+      }catch(e){
+        lastErr = e;
+        var m = (e && e.message) || "";
+        // Ref moved under us — re-read the head and rebuild the commit
+        if(m.indexOf("422") >= 0 || m.indexOf("fast forward") >= 0 || m.indexOf("fast-forward") >= 0) continue;
+        throw e;
+      }
+    }
+    throw lastErr;
   }
 
   async function loadPublishedData(){
