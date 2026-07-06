@@ -1186,6 +1186,14 @@
   function ghToken(){ try{ return localStorage.getItem("je-auto-gh-token") || ""; }catch(e){ return ""; } }
   function setGhToken(t){ try{ localStorage.setItem("je-auto-gh-token", t || ""); }catch(e){} }
   function markDirty(){ pageDirty = true; updatePublishIndicator(); }
+  function friendlyGhError(err){
+    var m = (err && err.message) || "";
+    if(m.indexOf("NO_TOKEN") >= 0) return "Connect your GitHub key first (Publish tab).";
+    if(m.indexOf("401") >= 0) return "Your GitHub key was rejected (wrong or expired). Go to the Publish tab and reconnect with a new key.";
+    if(m.indexOf("403") >= 0) return "Your key can't edit this site. Recreate it with Contents = Read and write on the je-auto repo.";
+    if(m.indexOf("404") >= 0) return "Your key can't find the je-auto repo. Recreate it and select the je-auto repository.";
+    return "Publish failed: " + m;
+  }
   function updatePublishIndicator(){
     var b = document.getElementById("publishBtn");
     if(b) b.textContent = pageDirty ? "● Publish changes" : "Publish to Website";
@@ -1938,7 +1946,7 @@
       toast("Published! Your website updates in about 1–2 minutes.");
     }catch(err){
       if(err.message === "NO_TOKEN"){ state.activeTab = "publish"; renderAdmin(); return; }
-      toast("Publish failed: " + err.message, false);
+      toast(friendlyGhError(err), false);
     }finally{
       if(btn){ btn.disabled = false; updatePublishIndicator(); }
     }
@@ -2350,18 +2358,34 @@
   }
   function bindPublishTabEvents(){
     var connectBtn = document.getElementById("connectGhBtn");
-    if(connectBtn) connectBtn.addEventListener("click", function(){
-      var t = (document.getElementById("ghTokenInput").value || "").trim();
+    if(connectBtn) connectBtn.addEventListener("click", async function(){
+      var t = (document.getElementById("ghTokenInput").value || "").trim().replace(/\s+/g, "");
       if(!t){ toast("Please paste your GitHub key.", false); return; }
-      setGhToken(t);
-      toast("Connected. You can now publish from this device.");
-      renderAdminTabContent();
+      connectBtn.disabled = true; connectBtn.textContent = "Checking key…";
+      try{
+        var r = await fetch("https://api.github.com/repos/" + GH_OWNER + "/" + GH_REPO, {
+          headers: { "Authorization": "Bearer " + t, "Accept": "application/vnd.github+json" }
+        });
+        if(r.status === 200){
+          setGhToken(t);
+          toast("Connected! Your key works. You can publish now.");
+          renderAdminTabContent();
+          return;
+        }
+        if(r.status === 401) toast("That key was rejected (wrong or expired). Create a NEW key and paste the whole thing.", false);
+        else if(r.status === 404) toast("That key can't see the je-auto repo. When creating it, select the je-auto repository.", false);
+        else if(r.status === 403) toast("That key is blocked (403). Recreate it with Contents = Read and write on je-auto.", false);
+        else toast("GitHub returned " + r.status + ". Please try a fresh key.", false);
+      }catch(e){
+        toast("Couldn't reach GitHub: " + e.message, false);
+      }
+      connectBtn.disabled = false; connectBtn.textContent = "Connect this device";
     });
     var pubNow = document.getElementById("publishNowBtn");
     if(pubNow) pubNow.addEventListener("click", async function(){
       pubNow.disabled = true; pubNow.textContent = "Publishing…";
       try{ await publishToGitHub(); toast("Published! Your website updates in about 1–2 minutes."); renderAdminTabContent(); }
-      catch(err){ toast("Publish failed: " + err.message, false); }
+      catch(err){ toast(friendlyGhError(err), false); }
       finally{ if(document.getElementById("publishNowBtn")){ pubNow.disabled = false; pubNow.textContent = "Publish to Website Now"; } }
     });
     var disc = document.getElementById("disconnectGhBtn");
