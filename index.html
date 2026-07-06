@@ -2465,6 +2465,15 @@
 
   function bindPageContentEvents(){
     var form = document.getElementById("pageContentForm");
+    // Auto-save each field into memory as it's typed, so edits are never lost
+    // when switching tabs or publishing without pressing "Save All Changes".
+    if(form) form.addEventListener("input", function(e){
+      var el = e.target;
+      if(el && el.id && el.id.indexOf("pc_") === 0){
+        state.content[el.id.slice(3)] = el.value;
+        markDirty();
+      }
+    });
     var topBtn = document.getElementById("savePageContentTop");
 
     var heroDrop = document.getElementById("heroDrop");
@@ -2521,6 +2530,17 @@
   }
   function bindSettingsTabEvents(){
     var form = document.getElementById("settingsForm");
+    // Auto-save contact fields into memory as they're typed
+    if(form) form.addEventListener("input", function(){
+      state.settings = {
+        businessName: (document.getElementById("setName").value || "").trim() || DEFAULT_SETTINGS.businessName,
+        phone: (document.getElementById("setPhone").value || "").trim(),
+        whatsapp: (document.getElementById("setWa").value || "").replace(/[^\d]/g, ""),
+        email: (document.getElementById("setEmail").value || "").trim(),
+        address: (document.getElementById("setAddress").value || "").trim()
+      };
+      markDirty();
+    });
     if(form) form.addEventListener("submit", async function(e){
       e.preventDefault();
       var s = {
