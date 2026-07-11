@@ -1,0 +1,360 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JE Auto — Tax Invoice</title>
+<style>
+  :root{
+    --ink:#111418; --muted:#6b7280; --line:#d7dbe0; --gold:#c9a227;
+    --dark:#14171c; --bg:#eef1f4; --edit:#fff8e1;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0; padding:0; background:var(--bg); color:var(--ink);
+    font-family:"Segoe UI",Arial,Helvetica,sans-serif; font-size:13px; line-height:1.35;}
+
+  /* ---- Toolbar (screen only) ---- */
+  .toolbar{position:sticky; top:0; z-index:50; background:var(--dark); color:#fff;
+    display:flex; gap:8px; align-items:center; padding:10px 16px; flex-wrap:wrap;}
+  .toolbar .sp{flex:1;}
+  .toolbar button{font:inherit; font-size:13px; font-weight:600; cursor:pointer;
+    border:1px solid #333a44; background:#20252d; color:#fff; padding:8px 14px; border-radius:7px;}
+  .toolbar button:hover{background:#2b323c;}
+  .toolbar button.primary{background:var(--gold); color:#1a1400; border-color:var(--gold);}
+  .toolbar button.primary:hover{filter:brightness(1.07);}
+  .toolbar .hint{font-size:12px; color:#9aa3ad;}
+
+  /* ---- Page ---- */
+  .sheet{width:210mm; min-height:297mm; margin:18px auto; background:#fff;
+    box-shadow:0 6px 30px rgba(0,0,0,.15); padding:0 0 14mm 0;}
+
+  /* ---- Header band ---- */
+  .head{background:var(--dark); color:#fff; padding:20px 24px; display:flex;
+    align-items:center; justify-content:space-between; gap:20px;}
+  .head .brand{display:flex; align-items:flex-start; gap:16px;}
+  .head img.logo{height:52px; width:auto; display:block;}
+  .head .seller{max-width:250px;}
+  .head .doc{text-align:right;}
+  .head .doc .t{font-family:"Segoe UI",Arial; font-size:26px; letter-spacing:.28em;
+    font-weight:800; color:#fff;}
+  .head .doc .t b{color:var(--gold);}
+  .goldbar{height:4px; background:var(--gold);}
+
+  /* ---- Body ---- */
+  .body{padding:16px 24px;}
+  .row{display:flex; gap:18px;}
+  .col{flex:1; min-width:0;}
+
+  .meta{display:grid; grid-template-columns:120px 1fr; gap:6px 10px; align-items:center;}
+  .meta .lbl{font-weight:700; white-space:nowrap;}
+
+  .card{border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-top:12px;}
+  .card > .ct{font-weight:800; font-size:11px; letter-spacing:.09em; text-transform:uppercase;
+    color:var(--muted); margin:0 0 6px;}
+
+  /* ===== EDITABLE FORM FIELDS ===== */
+  input.edit, textarea.edit{
+    font:inherit; color:var(--ink); background:var(--edit);
+    border:1px solid #e7dca8; border-radius:5px; padding:3px 6px; width:100%;
+    outline:none; display:block;
+  }
+  input.edit:hover, textarea.edit:hover{border-color:#d8c67e;}
+  input.edit:focus, textarea.edit:focus{
+    background:#fff6cf; border-color:var(--gold); box-shadow:0 0 0 2px rgba(201,162,39,.28);
+  }
+  input.edit::placeholder, textarea.edit::placeholder{color:#b0a878;}
+  textarea.edit{resize:none; overflow:hidden; min-height:1.7em; line-height:1.45;}
+
+  /* header seller fields on dark bg */
+  .head textarea.edit{background:rgba(255,255,255,.08); color:#fff; border:1px solid rgba(255,255,255,.22);
+    font-size:11.5px; line-height:1.5;}
+  .head textarea.edit::placeholder{color:#aab2bb;}
+  .head textarea.edit:focus{background:rgba(255,255,255,.15); border-color:var(--gold); box-shadow:none;}
+
+  /* vehicle grid */
+  .vgrid{display:grid; grid-template-columns:78px 1fr 84px 1fr; gap:6px 8px; align-items:center;}
+  .vgrid .lbl{font-weight:700; white-space:nowrap;}
+
+  /* items table */
+  table{width:100%; border-collapse:collapse; margin-top:14px;}
+  thead th{background:var(--dark); color:#fff; text-align:left; padding:8px 10px;
+    font-size:11px; letter-spacing:.06em; text-transform:uppercase;}
+  thead th.amt{text-align:right; width:160px;}
+  thead th.act{width:34px;}
+  tbody td{border-bottom:1px solid var(--line); padding:4px 6px; vertical-align:middle;}
+  td.desc input.edit, td.amtc input.edit{border-color:transparent; background:var(--edit);}
+  td.desc input.edit:focus, td.amtc input.edit:focus{border-color:var(--gold); background:#fff6cf;}
+  td.amtc input.edit{text-align:right;}
+  td.act{text-align:center;}
+  .delrow{border:none; background:none; color:#c0392b; cursor:pointer; font-size:18px; line-height:1; padding:0 4px;}
+  .delrow:hover{color:#e74c3c;}
+  .addbtn{margin-top:8px; font:inherit; font-size:12px; font-weight:600; cursor:pointer;
+    border:1px dashed var(--gold); background:#fffdf3; color:#7a5c00; padding:7px 13px; border-radius:6px;}
+
+  /* totals */
+  .totals{margin-top:14px; margin-left:auto; width:62%;}
+  .totals .tr{display:flex; justify-content:space-between; align-items:center; padding:5px 8px; border-bottom:1px solid var(--line);}
+  .totals .tr .lbl{font-weight:700;}
+  .totals .tr .val{display:flex; align-items:center; gap:4px;}
+  .totals input.amt-in{width:120px; text-align:right;}
+  .totals .tr.grand{background:#faf6e6; border:1.5px solid var(--gold); border-radius:6px; margin-top:6px;
+    font-size:15px; font-weight:800; padding:8px;}
+  .totals .tr.grand .lbl{font-weight:800;}
+  .money-pre{color:var(--muted); font-weight:600;}
+
+  /* signatures */
+  .sign{display:flex; gap:40px; margin-top:28px;}
+  .sign .sc{flex:1;}
+  .sign .ln{border-top:1px solid #333; margin-top:36px; padding-top:4px; font-size:11.5px; color:#444;}
+
+  /* bank + terms */
+  .foot{margin-top:14px; text-align:center; font-size:10.5px; color:var(--muted);}
+
+  @media print{
+    @page{size:A4; margin:0;}
+    body{background:#fff;}
+    .toolbar{display:none !important;}
+    .sheet{width:auto; min-height:auto; margin:0; box-shadow:none;}
+    input.edit, textarea.edit{
+      background:transparent !important; border:none !important; box-shadow:none !important;
+      padding:0 !important; color:#000 !important; resize:none;
+    }
+    .head textarea.edit{color:#fff !important;}
+    input.edit::placeholder, textarea.edit::placeholder{color:transparent !important;}
+    .addbtn,.delrow,.act,thead th.act{display:none !important;}
+    thead th{-webkit-print-color-adjust:exact; print-color-adjust:exact;}
+    .head,.goldbar,.totals .tr.grand{-webkit-print-color-adjust:exact; print-color-adjust:exact;}
+  }
+</style>
+
+<div class="toolbar">
+  <button class="primary" onclick="window.print()">🖨️ Print / Save PDF</button>
+  <button onclick="newInvoice()">＋ New Invoice</button>
+  <button onclick="addRow()">＋ Add Line</button>
+  <span class="sp"></span>
+  <span class="hint">Titles are fixed · click any yellow box to type · totals auto-calculate</span>
+</div>
+
+<div class="sheet">
+
+  <!-- ===== HEADER ===== -->
+  <div class="head">
+    <div class="brand">
+      <img class="logo" src="data:image/png;base64,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" alt="JE Auto">
+      <div class="seller">
+        <textarea class="edit" rows="4" placeholder="Company name & address">JE Auto Sdn Bhd
+No. 1, Jalan Example, 47500 Subang Jaya
+Selangor, Malaysia
+Reg No: 000000-X</textarea>
+      </div>
+    </div>
+    <div class="doc">
+      <div class="t">TAX <b>INVOICE</b></div>
+    </div>
+  </div>
+  <div class="goldbar"></div>
+
+  <div class="body">
+
+    <!-- ===== TOP INFO ===== -->
+    <div class="row">
+      <div class="col">
+        <div class="card">
+          <div class="ct">Customer's Name &amp; Address</div>
+          <textarea class="edit" rows="4" placeholder="Customer name&#10;Address&#10;Postcode, City&#10;State"></textarea>
+        </div>
+        <div class="card">
+          <div class="ct">Finance Info.</div>
+          <textarea class="edit" rows="2" placeholder="Finance company name&#10;Branch / address"></textarea>
+        </div>
+      </div>
+      <div class="col">
+        <div class="card">
+          <div class="meta">
+            <span class="lbl">Invoice No.</span><input class="edit" id="invno" placeholder="auto">
+            <span class="lbl">Date</span><input class="edit" id="invdate" placeholder="DD/MM/YYYY">
+            <span class="lbl">Page No.</span><input class="edit" value="1">
+            <span class="lbl">Sales Advisor</span><input class="edit" placeholder="Advisor name">
+            <span class="lbl">Customer Order No.</span><input class="edit" placeholder="">
+          </div>
+        </div>
+        <div class="card">
+          <div class="ct">Vehicle Details</div>
+          <div class="vgrid">
+            <span class="lbl">Make</span><input class="edit" value="BMW">
+            <span class="lbl">Chassis No.</span><input class="edit">
+            <span class="lbl">Model</span><input class="edit">
+            <span class="lbl">Reg. No.</span><input class="edit">
+            <span class="lbl">Colour</span><input class="edit">
+            <span class="lbl">Engine No.</span><input class="edit">
+            <span class="lbl">Trim</span><input class="edit">
+            <span class="lbl">Engine CC</span><input class="edit">
+            <span class="lbl">New / Used</span><input class="edit">
+            <span class="lbl">Year</span><input class="edit">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== LINE ITEMS ===== -->
+    <table id="items">
+      <thead>
+        <tr><th>Description</th><th class="amt">Amount (RM)</th><th class="act"></th></tr>
+      </thead>
+      <tbody id="itembody"><!-- rows injected by JS --></tbody>
+    </table>
+    <button class="addbtn" onclick="addRow()">＋ Add line item</button>
+
+    <!-- ===== TOTALS ===== -->
+    <div class="totals">
+      <div class="tr"><span class="lbl">Subtotal</span><span class="val"><span class="money-pre">RM</span><span id="subtotal">0.00</span></span></div>
+      <div class="tr"><span class="lbl">Deposit</span><span class="val"><span class="money-pre">RM</span><input class="edit amt-in" id="deposit" placeholder="0.00"></span></div>
+      <div class="tr"><span class="lbl">Finance / Loan Amount</span><span class="val"><span class="money-pre">RM</span><input class="edit amt-in" id="finance" placeholder="0.00"></span></div>
+      <div class="tr"><span class="lbl">Amount Refund to Customer</span><span class="val"><span class="money-pre">RM</span><input class="edit amt-in" id="refund" placeholder="0.00"></span></div>
+      <div class="tr grand"><span class="lbl">Balance Due</span><span class="val"><span class="money-pre">RM</span><span id="balance">0.00</span></span></div>
+    </div>
+    <div style="clear:both"></div>
+
+    <!-- ===== SIGNATURES ===== -->
+    <div class="sign">
+      <div class="sc"><div class="ln">Customer's Signature &nbsp;&nbsp; Date: ____ / ____ / ______</div></div>
+      <div class="sc"><div class="ln">Authorised Signature (JE Auto)</div></div>
+    </div>
+
+    <!-- ===== BANK DETAILS ===== -->
+    <div class="card">
+      <div class="ct">Bank Details / Payment</div>
+      <textarea class="edit" rows="3" placeholder="Bank details">All cheques should be crossed &amp; made payable to JE Auto Sdn Bhd, or remit payment to:
+MALAYAN BANKING BERHAD — A/C No.: 0000 0000 0000
+UNITED OVERSEAS BANK (M) BHD — A/C No.: 0000-0000-00</textarea>
+    </div>
+
+    <!-- ===== TERMS ===== -->
+    <div class="card">
+      <div class="ct">Terms &amp; Conditions</div>
+      <textarea class="edit" rows="5" placeholder="Terms &amp; conditions">1. Full payment must be made before delivery of vehicle. A letter of undertaking from the Finance Company for the amount of loan is acceptable.
+2. All cheques should be made payable to JE Auto Sdn Bhd, crossed 'A/C Payee only' and cleared by our banker before delivery of the vehicle.
+3. If you do not receive an official receipt of any payment made to the company within seven (7) days, please notify the manager immediately.
+4. An interest rate of 1.5% will be charged on all outstanding amounts.</textarea>
+    </div>
+
+    <div class="foot">This is a computer-generated invoice. Thank you for your business — JE Auto.</div>
+  </div>
+</div>
+
+<script>
+  var SKEY='je_invoice_draft_v2';
+
+  // default line-item descriptions (from your original invoice)
+  var DEFAULT_ITEMS = [
+    ["Vehicle Price", ""],
+    ["Registration Fee", ""],
+    ["Road Tax", ""],
+    ["Insurance Fees", ""]
+  ];
+
+  // ---------- line items ----------
+  function addRow(desc, amt){
+    var tr=document.createElement('tr');
+    tr.innerHTML='<td class="desc"><input class="edit desc-in" placeholder="Item description"></td>'+
+                 '<td class="amtc"><input class="edit amt-in" placeholder="0.00"></td>'+
+                 '<td class="act"><button class="delrow" title="Remove" onclick="delRow(this)">&times;</button></td>';
+    tr.querySelector('.desc-in').value = desc||'';
+    tr.querySelector('.amt-in').value  = (amt!==undefined?amt:'');
+    document.getElementById('itembody').appendChild(tr);
+    bindAmounts(); recalc();
+  }
+  function delRow(btn){ btn.closest('tr').remove(); recalc(); }
+
+  // ---------- numbers ----------
+  function parseNum(t){
+    if(t===undefined||t===null) return 0;
+    var s=String(t).replace(/[^0-9.\-]/g,'');   // strip RM, commas, "F.O.C" etc.
+    var n=parseFloat(s); return isNaN(n)?0:n;
+  }
+  function fmt(n){ return n.toLocaleString('en-MY',{minimumFractionDigits:2, maximumFractionDigits:2}); }
+  function val(id){ var e=document.getElementById(id); return e?e.value:''; }
+
+  function recalc(){
+    var sub=0;
+    document.querySelectorAll('#itembody .amt-in').forEach(function(el){ sub+=parseNum(el.value); });
+    var deposit=parseNum(val('deposit')), finance=parseNum(val('finance')), refund=parseNum(val('refund'));
+    document.getElementById('subtotal').textContent=fmt(sub);
+    document.getElementById('balance').textContent=fmt(sub - deposit - finance - refund);
+    save();
+  }
+
+  function bindAmounts(){
+    document.querySelectorAll('.amt-in').forEach(function(el){
+      if(el.dataset.bound) return; el.dataset.bound='1';
+      el.addEventListener('input', recalc);
+      el.addEventListener('blur', function(){
+        var v=el.value.trim();
+        if(v!=='' && /^[\s0-9.,\-]+$/.test(v)) el.value=fmt(parseNum(v));  // format pure numbers, keep text like F.O.C
+        recalc();
+      });
+    });
+  }
+
+  // ---------- auto-grow textareas (so long text prints fully) ----------
+  function autoGrow(t){ t.style.height='auto'; t.style.height=(t.scrollHeight+2)+'px'; }
+  function autoGrowAll(){ document.querySelectorAll('textarea.edit').forEach(autoGrow); }
+
+  // ---------- invoice number + date ----------
+  function todayStr(){
+    var d=new Date();
+    return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
+  }
+  function genInvNo(){
+    var n=parseInt(localStorage.getItem('je_inv_counter')||'1000',10)+1;
+    localStorage.setItem('je_inv_counter', n);
+    return 'JE-'+new Date().getFullYear()+'-'+String(n).padStart(4,'0');
+  }
+
+  // ---------- autosave (survives refresh) ----------
+  function staticFields(){
+    return Array.prototype.filter.call(document.querySelectorAll('.edit'),
+      function(el){ return !el.closest('#itembody'); });
+  }
+  function save(){
+    try{
+      var items=[];
+      document.querySelectorAll('#itembody tr').forEach(function(tr){
+        items.push({d:(tr.querySelector('.desc-in')||{}).value||'',
+                    a:(tr.querySelector('.amt-in')||{}).value||''});
+      });
+      var fields=staticFields().map(function(el){ return el.value; });
+      localStorage.setItem(SKEY, JSON.stringify({items:items, fields:fields}));
+    }catch(e){}
+  }
+  function restore(){
+    var raw; try{ raw=localStorage.getItem(SKEY); }catch(e){ return false; }
+    if(!raw) return false;
+    var d; try{ d=JSON.parse(raw); }catch(e){ return false; }
+    if(!d || !Array.isArray(d.items)) return false;
+    var tb=document.getElementById('itembody'); tb.innerHTML='';
+    d.items.forEach(function(it){ addRow(it.d, it.a); });
+    var els=staticFields();
+    (d.fields||[]).forEach(function(v,i){ if(els[i]) els[i].value=v; });
+    return true;
+  }
+
+  function newInvoice(){
+    if(!confirm('Start a new blank invoice? The current one will be cleared.')) return;
+    try{ localStorage.removeItem(SKEY); }catch(e){}
+    location.reload();
+  }
+
+  // ---------- init ----------
+  function init(){
+    var restored=restore();
+    if(!restored){ DEFAULT_ITEMS.forEach(function(it){ addRow(it[0], it[1]); }); }
+    bindAmounts();
+    var inv=document.getElementById('invno'); if(inv && !inv.value.trim()) inv.value=genInvNo();
+    var dt=document.getElementById('invdate'); if(dt && !dt.value.trim()) dt.value=todayStr();
+    autoGrowAll();
+    document.querySelector('.sheet').addEventListener('input', function(e){
+      if(e.target && e.target.tagName==='TEXTAREA') autoGrow(e.target);
+      save();
+    });
+    recalc();
+  }
+  document.addEventListener('DOMContentLoaded', init);
+</script>
