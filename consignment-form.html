@@ -103,9 +103,16 @@
 
   @media print{
     @page{size:A4; margin:0;}
-    body{background:#fff;}
+    html,body{background:#fff;}
     .toolbar{display:none !important;}
-    .sheet{width:auto; min-height:100vh; margin:0; box-shadow:none;}
+    .sheet{width:auto; min-height:auto; margin:0; box-shadow:none; padding:0;}
+    .body{padding:10px 22px 0;}
+    .metarow{margin-bottom:8px;}
+    .sect{margin:9px 0 5px;}
+    .terms{margin-top:8px;}
+    .terms li{margin-bottom:3px;}
+    .signblock{margin-top:12px; page-break-inside:avoid; break-inside:avoid;}
+    .foot{margin-top:10px;}
     input.edit, textarea.edit{
       background:transparent !important; box-shadow:none !important;
       color:#000 !important;
