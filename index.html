@@ -10,16 +10,20 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700;9..144,900&family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --black:#0a0a0b;
-    --black-2:#141411;
-    --black-3:#1c1b16;
+    /* Light theme. --black is kept as the DARK INK used for text-on-gold and dark fills;
+       page/card surfaces are light; --on-dark = fixed light text for elements over photos/dark overlays. */
+    --black:#14141a;              /* dark ink */
+    --black-2:#ffffff;            /* card surface */
+    --black-3:#ecedf1;            /* inset surface (inputs, insets) */
     --gold:#c9a227;
-    --gold-bright:#e8c766;
+    --gold-bright:#9a7410;        /* deepened so gold accents read on light backgrounds */
     --gold-deep:#8b6f1f;
-    --ivory:#f3efe3;
-    --muted:#9c9380;
-    --line:rgba(201,162,39,.18);
-    --line-strong:rgba(201,162,39,.35);
+    --ivory:#1c1c22;             /* main text (dark) */
+    --muted:#66666f;             /* muted text */
+    --line:rgba(0,0,0,.12);
+    --line-strong:rgba(0,0,0,.22);
+    --page-bg:#e7e7ec;           /* light grey page background */
+    --on-dark:#f5f3ec;           /* fixed light text for content over photos / dark overlays */
     --r-sm:3px;
     --r-md:6px;
     --r-full:999px;
@@ -28,7 +32,7 @@
   html{scroll-behavior:smooth;}
   @media (prefers-reduced-motion: reduce){ html{scroll-behavior:auto;} *{animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important;} }
   body{
-    margin:0; background:var(--black); color:var(--ivory);
+    margin:0; background:var(--page-bg); color:var(--ivory);
     font-family:'Manrope',sans-serif; font-size:16px; line-height:1.6;
     -webkit-font-smoothing:antialiased;
   }
@@ -468,6 +472,21 @@
     transform:translateX(20px); opacity:0; transition:all .3s ease; max-width:320px;
   }
   .toast.show{transform:translateX(0); opacity:1;}
+
+  /* ===== Light theme overrides ===== */
+  header.site-header{ background:rgba(255,255,255,.82); }
+  #adminRoot{ background:var(--page-bg); }
+  #detailRoot{ background:var(--page-bg); }
+  .detail-topbar{ background:rgba(255,255,255,.92); }
+  /* white logo PNG -> render dark on the light background */
+  .logo-mark .je-logo{ filter:invert(1); }
+  /* content over photos / dark overlays keeps light text */
+  .slide-info .slide-name{ color:var(--on-dark); }
+  .badge-used{ color:var(--on-dark); }
+  .lightbox-close, .lightbox-nav{ color:var(--on-dark); }
+  .lightbox-caption{ color:rgba(245,243,236,.75); }
+  /* Hot Deals badge above the hero slideshow */
+  .hot-deal{ display:inline-flex; align-items:center; gap:8px; font-family:'JetBrains Mono',monospace; font-weight:700; font-size:.82rem; letter-spacing:.13em; text-transform:uppercase; color:#fff; background:linear-gradient(135deg,#e0562a,#c9a227); padding:9px 20px; border-radius:var(--r-full); margin-bottom:16px; box-shadow:0 6px 18px rgba(224,86,42,.28); }
 </style>
 </head>
 <body>
@@ -551,6 +570,7 @@
     </div>
 
     <div class="hero-visual">
+      <div class="hot-deal">🔥 Hot Deals</div>
       <div class="hero-panel">
         <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
         <div class="hero-media" id="heroMedia"><svg viewBox="0 0 200 100" xmlns="http://www.w3.org/2000/svg">
