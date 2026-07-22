@@ -485,6 +485,9 @@
   .badge-used{ color:var(--on-dark); }
   .lightbox-close, .lightbox-nav{ color:var(--on-dark); }
   .lightbox-caption{ color:rgba(245,243,236,.75); }
+  /* remove decorative gold glows/lines that read as a warm-red tint on the light theme */
+  .hero::before, .hero::after{ display:none; }
+  .cta-band{ background:none; }
   /* Hot Deals badge above the hero slideshow */
   .hot-deal{ display:inline-flex; align-items:center; gap:8px; font-family:'JetBrains Mono',monospace; font-weight:700; font-size:.82rem; letter-spacing:.13em; text-transform:uppercase; color:#fff; background:linear-gradient(135deg,#e0562a,#c9a227); padding:9px 20px; border-radius:var(--r-full); margin-bottom:16px; box-shadow:0 6px 18px rgba(224,86,42,.28); }
 </style>
