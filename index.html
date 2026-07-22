@@ -153,6 +153,20 @@
   .hero-panel .corner.br{bottom:10px; right:10px; border-left:none; border-top:none;}
   .hero-panel svg{color:var(--gold); width:100%; height:auto; opacity:.95;}
   .hero-media img{width:100%; height:auto; max-height:340px; object-fit:cover; border-radius:var(--r-sm); display:block;}
+  /* ---------- Hero stock slideshow ---------- */
+  .hero-slideshow{position:relative; width:100%; aspect-ratio:16/10; overflow:hidden; border-radius:var(--r-sm); background:var(--black-3);}
+  .hero-slide{position:absolute; inset:0; opacity:0; transition:opacity .7s ease; cursor:pointer; display:flex; align-items:center; justify-content:center;}
+  .hero-slide.active{opacity:1; z-index:1;}
+  .hero-slide img{width:100%; height:100%; object-fit:cover; border-radius:0;}
+  .hero-slide .slide-icon{color:var(--gold); width:58%; opacity:.85;}
+  .hero-slide .slide-icon svg{width:100%; height:auto;}
+  .slide-info{position:absolute; left:0; right:0; bottom:0; padding:26px 18px 14px; background:linear-gradient(transparent, rgba(10,10,11,.94)); text-align:left; z-index:2;}
+  .slide-info .slide-badge{display:inline-block; font-family:'JetBrains Mono',monospace; font-size:.56rem; letter-spacing:.1em; text-transform:uppercase; color:var(--black); background:var(--gold-bright); padding:3px 9px; border-radius:var(--r-full); margin-bottom:8px;}
+  .slide-info .slide-name{font-family:'Fraunces',serif; font-weight:700; font-size:1.05rem; color:var(--ivory); line-height:1.2;}
+  .slide-info .slide-price{font-family:'JetBrains Mono',monospace; font-size:.78rem; color:var(--gold-bright); margin-top:3px;}
+  .hero-dots{position:absolute; top:12px; right:12px; display:flex; gap:6px; z-index:3;}
+  .hero-dot{width:8px; height:8px; padding:0; border-radius:50%; border:none; background:rgba(243,239,227,.35); cursor:pointer; transition:background .2s;}
+  .hero-dot.active{background:var(--gold-bright);}
   .hero-chips{display:flex; gap:10px; flex-wrap:wrap; margin-top:18px;}
   .chip{
     font-family:'JetBrains Mono',monospace; font-size:.68rem; letter-spacing:.05em; text-transform:uppercase;
@@ -1630,6 +1644,57 @@
     }
   }
 
+  /* ---------- Hero stock slideshow (up to 6 available cars) ---------- */
+  var heroTimer = null, heroIdx = 0, heroCount = 0;
+  function buildHeroSlideshow(){
+    var media = document.getElementById("heroMedia");
+    if(!media) return;
+    var cars = state.cars || [];
+    var avail = cars.filter(function(c){ return (c.status || "Available") === "Available"; });
+    var pool = avail.length ? avail : cars;
+    var withP = pool.filter(function(c){ return (state.carPhotos[c.id] || []).length; });
+    var without = pool.filter(function(c){ return !(state.carPhotos[c.id] || []).length; });
+    var chosen = withP.concat(without).slice(0, 6);
+    if(!chosen.length) return; // no cars — keep the default graphic
+    heroCount = chosen.length; heroIdx = 0;
+    var slides = chosen.map(function(c, i){
+      var photos = state.carPhotos[c.id] || [];
+      var est = flatRateInstallment(c.price, 10, 3.5, 9);
+      var visual = photos.length
+        ? '<img src="' + photos[0] + '" alt="' + escapeHtml(c.name) + '" loading="lazy">'
+        : '<div class="slide-icon">' + CAR_ICON + '</div>';
+      return '<div class="hero-slide' + (i === 0 ? ' active' : '') + '" onclick="JEAuto.openDetail(' + c.id + ')">' +
+        visual +
+        '<div class="slide-info">' +
+          '<span class="slide-badge">' + LABELS[c.category] + '</span>' +
+          '<div class="slide-name">' + escapeHtml(c.name) + '</div>' +
+          '<div class="slide-price">' + fmtRM(c.price) + ' · from ' + fmtRM(est.monthly) + '/mo*</div>' +
+        '</div>' +
+      '</div>';
+    }).join("");
+    var dots = chosen.map(function(c, i){ return '<button class="hero-dot' + (i === 0 ? ' active' : '') + '" data-i="' + i + '" aria-label="Show car ' + (i + 1) + '"></button>'; }).join("");
+    media.innerHTML = '<div class="hero-slideshow" id="heroSlideshow">' + slides + '<div class="hero-dots">' + dots + '</div></div>';
+    var ss = document.getElementById("heroSlideshow");
+    ss.querySelectorAll(".hero-dot").forEach(function(d){
+      d.addEventListener("click", function(e){ e.stopPropagation(); heroGoTo(parseInt(d.getAttribute("data-i"), 10)); heroRestart(); });
+    });
+    ss.addEventListener("mouseenter", function(){ if(heroTimer) clearInterval(heroTimer); });
+    ss.addEventListener("mouseleave", heroRestart);
+    heroRestart();
+  }
+  function heroGoTo(i){
+    var ss = document.getElementById("heroSlideshow"); if(!ss) return;
+    var slides = ss.querySelectorAll(".hero-slide"), dots = ss.querySelectorAll(".hero-dot");
+    if(!slides.length) return;
+    heroIdx = (i % slides.length + slides.length) % slides.length;
+    slides.forEach(function(s, k){ s.classList.toggle("active", k === heroIdx); });
+    dots.forEach(function(d, k){ d.classList.toggle("active", k === heroIdx); });
+  }
+  function heroRestart(){
+    if(heroTimer) clearInterval(heroTimer);
+    if(heroCount > 1) heroTimer = setInterval(function(){ heroGoTo(heroIdx + 1); }, 4000);
+  }
+
   function applySettings(){
     var s = state.settings || DEFAULT_SETTINGS;
     var wa = waDigits();
@@ -2806,6 +2871,7 @@
     applySettings();
     applyContent();
     applyHeroImage();
+    buildHeroSlideshow();
     initFilters();
     initCalculator();
     initNav();
